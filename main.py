@@ -150,13 +150,29 @@ def add_relative_time(data_points):
 
 
 def add_ref_to_samples(data_points):
-    ref_list = [dp for dp in data_points if dp.measurement_type == 'Reference']
+    all_ref_dps = [dp for dp in data_points if dp.measurement_type == 'Reference']
+
+    t_diff_threshold = 120
+
     for dp in data_points:
-        if dp.measurement_type == 'Reference':
-            dp.nearest_ref_dp = dp
-        else:
-            ref_time_diffs = np.array([(dp.tds_data.date-ref_dp.tds_data.date).total_seconds() for ref_dp in ref_list])
-            dp.nearest_ref_dp = ref_list[np.argmin(np.abs(ref_time_diffs))]
+        if dp.measurement_type != 'Sample':
+            continue
+
+        # only take refs below time threshold
+        ref_candidates = []
+        for ref_dp in all_ref_dps:
+            if abs((dp.tds_data.date-ref_dp.tds_data.date).total_seconds()) < t_diff_threshold:
+                ref_candidates.append(ref_dp)
+
+        sample_rh, sample_temp = dp.climate_data.rh, dp.climate_data.temp
+        for ref_candidate in ref_candidates:
+            ref_rh, ref_temp = ref_candidate.climate_data.rh, ref_candidate.climate_data.temp
+            rh_cond = abs(ref_rh-sample_rh) < 2
+            temp_cond = abs(ref_temp-sample_temp) < 0.2
+
+            if rh_cond and temp_cond:
+                dp.nearest_ref_dp = ref_candidate
+                break # found a suitable ref for the sample
 
 
 def main():
@@ -203,15 +219,14 @@ if __name__ == '__main__':
     sorted_data_points = main()
 
     for dp in sorted_data_points:
-        print(dp, dp.measurement_type)
-        print(dp.climate_data, '\n')
-        thz_data = dp.tds_data.data
-        """
-        plt.plot(thz_data[:, 0], thz_data[:, 1])
-        plt.show()
-        """
-
-    temp = [dp.climate_data.temp for dp in sorted_data_points]
-
-    plt.plot(temp)
-    plt.show()
+        if dp.measurement_type == 'Invalid':
+            continue
+        print(dp.measurement_type)
+        print('dp climate:', dp.climate_data)
+        print('dp thz:', dp.tds_data)
+        if dp.nearest_ref_dp:
+            print('Nearest ref climate: ', dp.nearest_ref_dp.climate_data)
+            print('Nearest ref thz:', dp.nearest_ref_dp.tds_data, '\n')
+        else:
+            print('Nearest ref climate: ', dp.nearest_ref_dp)
+            print('Nearest ref thz:', dp.nearest_ref_dp, '\n')
